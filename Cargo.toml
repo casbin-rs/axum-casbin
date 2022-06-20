@@ -1,0 +1,37 @@
+[package]
+name = "axum-casbin-auth"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "axum_casbin_auth"
+path = "src/lib.rs"
+
+[dependencies]
+casbin = { version = "2.0.9", default-features = false, features = ["incremental", "cached"] }
+tokio = { version = "1.17.0", default-features = false, optional = true }
+async-std = { version = "1.10.0", default-features = false, optional = true }
+axum = "0.5.7"
+futures = "0.3"
+tower = { version = "0.4", features = ["full"] }
+
+[features]
+default = ["runtime-tokio"]
+
+runtime-tokio = ["casbin/runtime-tokio", "tokio/sync"]
+runtime-async-std = ["casbin/runtime-async-std", "async-std/std"]
+
+[dev-dependencies]
+tokio = { version = "1.17.0", features = [ "full" ] }
+async-std = { version = "1.10.0", features = [ "attributes" ] }
+actix-rt = "2.7.0"
+
+# [profile.release]
+# codegen-units = 1
+# lto           = true
+# opt-level     = 3
+
+# [profile.dev]
+# split-debuginfo = "unpacked"
+
