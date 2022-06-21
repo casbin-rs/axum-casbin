@@ -1,14 +1,16 @@
-use axum::{
-    response::Response,
-    body::Body,
-    http::Request,
-};
 
-use futures::future::BoxFuture;
-use tower::{Service, Layer};
-use std::{task::{Context, Poll}, sync::Arc};
+use axum::{body::Body, http::Request, response::Response};
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
+use futures::future::{BoxFuture};
+use std::{
+    sync::Arc,
+    task::{Context, Poll},
+};
+use tower::{Layer, Service};
 
 #[cfg(feature = "runtime-tokio")]
 use tokio::sync::RwLock;
@@ -22,7 +24,7 @@ pub struct CasbinVals {
     pub domain: Option<String>,
 }
 #[derive(Clone)]
-struct CasbinService {
+pub struct CasbinService {
     enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
@@ -47,18 +49,24 @@ impl<S> Layer<S> for CasbinService {
     type Service = CasbinAxumMiddleware<S>;
 
     // This function may be required to update or integrate with casbin
-    fn layer(&self, inner: S) -> Self::Service {
-        CasbinAxumMiddleware { inner }
+    fn layer(&self, service: S) -> Self::Service {
+        // Check whether we need to use something for output as Service
+        CasbinAxumMiddleware {
+            enforcer: self.enforcer.clone(),
+            service: Rc::new(RefCell::new(service)),
+        }
     }
 }
 
 #[derive(Clone)]
-struct CasbinAxumMiddleware<S> {
-    inner: S,
+pub struct CasbinAxumMiddleware<S> {
+    service: Rc<RefCell<S>>,
+    enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
 impl<S> Service<Request<Body>> for CasbinAxumMiddleware<S>
 where
+    // Here need to decide on the request/service, it is making the issue
     S: Service<Request<Body>, Response = Response> + Send + 'static,
     S::Future: Send + 'static,
 {
@@ -67,12 +75,13 @@ where
     // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
+    // poll and call methods can be understood by reading the service in tower_service
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
+        Poll::Ready(Ok(self.service.poll_ready(cx)))
     }
 
     fn call(&mut self, mut request: Request<Body>) -> Self::Future {
-        let future = self.inner.call(request);
+        let future = self.service.call(request);
         Box::pin(async move {
             let response: Response = future.await?;
             Ok(response)
