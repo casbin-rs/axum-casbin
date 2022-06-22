@@ -24,14 +24,14 @@ pub struct CasbinVals {
     pub domain: Option<String>,
 }
 #[derive(Clone)]
-pub struct CasbinService {
+pub struct CasbinAxumService {
     enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
-impl CasbinService {
+impl CasbinAxumService {
     pub async fn new<M: TryIntoModel, A: TryIntoAdapter>(m: M, a: A) -> CasbinResult<Self> {
         let enforcer: CachedEnforcer = CachedEnforcer::new(m, a).await?;
-        Ok(CasbinService {
+        Ok(CasbinAxumService {
             enforcer: Arc::new(RwLock::new(enforcer)),
         })
     }
@@ -40,12 +40,12 @@ impl CasbinService {
         self.enforcer.clone()
     }
 
-    pub fn set_enforcer(e: Arc<RwLock<CachedEnforcer>>) -> CasbinService {
-        CasbinService { enforcer: e }
+    pub fn set_enforcer(e: Arc<RwLock<CachedEnforcer>>) -> CasbinAxumService {
+        CasbinAxumService { enforcer: e }
     }
 }
 // refer some more documentation from here, since it is specific to middleware
-impl<S> Layer<S> for CasbinService {
+impl<S> Layer<S> for CasbinAxumService {
     type Service = CasbinAxumMiddleware<S>;
 
     // This function may be required to update or integrate with casbin
