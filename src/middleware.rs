@@ -1,11 +1,10 @@
-
-use axum::{body::Body, http::Request, response::Response};
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use axum::{body::Body, http::Request, http::StatusCode, response::Response};
 use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
-use futures::future::{BoxFuture};
+use futures::future::BoxFuture;
+use std::error::Error;
+use std::fmt;
+use std::ops::{Deref, DerefMut};
 use std::{
     sync::Arc,
     task::{Context, Poll},
@@ -24,14 +23,14 @@ pub struct CasbinVals {
     pub domain: Option<String>,
 }
 #[derive(Clone)]
-pub struct CasbinAxumService {
+pub struct CasbinAxumLayer {
     enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
-impl CasbinAxumService {
+impl CasbinAxumLayer {
     pub async fn new<M: TryIntoModel, A: TryIntoAdapter>(m: M, a: A) -> CasbinResult<Self> {
         let enforcer: CachedEnforcer = CachedEnforcer::new(m, a).await?;
-        Ok(CasbinAxumService {
+        Ok(CasbinAxumLayer {
             enforcer: Arc::new(RwLock::new(enforcer)),
         })
     }
@@ -40,51 +39,143 @@ impl CasbinAxumService {
         self.enforcer.clone()
     }
 
-    pub fn set_enforcer(e: Arc<RwLock<CachedEnforcer>>) -> CasbinAxumService {
-        CasbinAxumService { enforcer: e }
+    pub fn set_enforcer(e: Arc<RwLock<CachedEnforcer>>) -> CasbinAxumLayer {
+        CasbinAxumLayer { enforcer: e }
     }
 }
-// refer some more documentation from here, since it is specific to middleware
-impl<S> Layer<S> for CasbinAxumService {
+
+impl<S> Layer<S> for CasbinAxumLayer {
     type Service = CasbinAxumMiddleware<S>;
 
-    // This function may be required to update or integrate with casbin
-    fn layer(&self, service: S) -> Self::Service {
-        // Check whether we need to use something for output as Service
+    fn layer(&self, inner: S) -> Self::Service {
         CasbinAxumMiddleware {
             enforcer: self.enforcer.clone(),
-            service: Rc::new(RefCell::new(service)),
+            inner,
         }
     }
 }
 
+impl Deref for CasbinAxumLayer {
+    type Target = Arc<RwLock<CachedEnforcer>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.enforcer
+    }
+}
+
+impl DerefMut for CasbinAxumLayer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.enforcer
+    }
+}
+
+#[derive(Debug)]
+struct Unauthorized;
+
+impl Error for Unauthorized {}
+
+impl fmt::Display for Unauthorized {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", StatusCode::UNAUTHORIZED)
+    }
+}
+
+#[derive(Debug)]
+struct BadGateway;
+
+impl Error for BadGateway {}
+
+impl fmt::Display for BadGateway {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", StatusCode::BAD_GATEWAY)
+    }
+}
+#[derive(Debug)]
+struct Forbidden;
+
+impl Error for Forbidden {}
+
+impl fmt::Display for Forbidden {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", StatusCode::FORBIDDEN)
+    }
+}
 #[derive(Clone)]
 pub struct CasbinAxumMiddleware<S> {
-    service: Rc<RefCell<S>>,
+    inner: S,
     enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
 impl<S> Service<Request<Body>> for CasbinAxumMiddleware<S>
 where
-    // Here need to decide on the request/service, it is making the issue
-    S: Service<Request<Body>, Response = Response> + Send + 'static,
+    S: Service<Request<Body>, Response = Response> + Clone + Send + 'static,
     S::Future: Send + 'static,
+    S::Error: Into<Box<dyn Error + Send + Sync>> + 'static,
 {
     type Response = S::Response;
-    type Error = S::Error;
+    type Error = Box<dyn Error + Send + Sync>;
     // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    // poll and call methods can be understood by reading the service in tower_service
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(self.service.poll_ready(cx)))
+        self.inner.poll_ready(cx).map_err(Into::into)
     }
 
-    fn call(&mut self, mut request: Request<Body>) -> Self::Future {
-        let future = self.service.call(request);
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let cloned_enforcer = self.enforcer.clone();
+        let clone = self.inner.clone();
+        let mut srv = std::mem::replace(&mut self.inner, clone);
+
         Box::pin(async move {
-            let response: Response = future.await?;
-            Ok(response)
+            let path = req.uri().path().to_string();
+            let action = req.method().as_str().to_string();
+            let option_vals = req.extensions().get::<CasbinVals>().map(|x| x.to_owned());
+            let vals = match option_vals {
+                Some(value) => value,
+                None => {
+                    return Err(Box::new(Unauthorized) as Box<dyn Error + Send + Sync>);
+                }
+            };
+
+            let subject = vals.subject.clone();
+
+            if !vals.subject.is_empty() {
+                if let Some(domain) = vals.domain {
+                    let mut lock = cloned_enforcer.write().await;
+                    match lock.enforce_mut(vec![subject, domain, path, action]) {
+                        Ok(true) => {
+                            drop(lock);
+                            return srv.call(req).await.map_err(|err| err.into());
+                        }
+                        Ok(false) => {
+                            drop(lock);
+                            return Err(Box::new(Forbidden) as Box<dyn Error + Send + Sync>);
+                        }
+                        Err(_) => {
+                            drop(lock);
+                            return Err(Box::new(BadGateway) as Box<dyn Error + Send + Sync>);
+                        }
+                    }
+                } else {
+                    let mut lock = cloned_enforcer.write().await;
+                    match lock.enforce_mut(vec![subject, path, action]) {
+                        Ok(true) => {
+                            drop(lock);
+                            return srv.call(req).await.map_err(|err| err.into());
+                        }
+                        Ok(false) => {
+                            drop(lock);
+                            return Err(Box::new(Forbidden) as Box<dyn Error + Send + Sync>);
+                        }
+                        Err(_) => {
+                            drop(lock);
+                            return Err(Box::new(BadGateway) as Box<dyn Error + Send + Sync>);
+                        }
+                    }
+                }
+            } else {
+                return Err(Box::new(Unauthorized) as Box<dyn Error + Send + Sync>);
+            }
         })
     }
 }
