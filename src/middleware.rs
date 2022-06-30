@@ -1,11 +1,18 @@
-use axum::{body::Body, http::Request, http::StatusCode, response::Response};
+use axum::{
+    body::{self, BoxBody},
+    response::Response,
+    BoxError,
+};
+use bytes::Bytes;
 use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
 use futures::future::BoxFuture;
-use std::error::Error;
-use std::fmt;
-use std::ops::{Deref, DerefMut};
+use http::{self, Request, StatusCode};
+use http_body::{Body as HttpBody, Full};
 use std::{
+    boxed::Box,
+    convert::Infallible,
+    ops::{Deref, DerefMut},
     sync::Arc,
     task::{Context, Poll},
 };
@@ -69,62 +76,37 @@ impl DerefMut for CasbinAxumLayer {
     }
 }
 
-#[derive(Debug)]
-struct Unauthorized;
-
-impl Error for Unauthorized {}
-
-impl fmt::Display for Unauthorized {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", StatusCode::UNAUTHORIZED)
-    }
-}
-
-#[derive(Debug)]
-struct BadGateway;
-
-impl Error for BadGateway {}
-
-impl fmt::Display for BadGateway {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", StatusCode::BAD_GATEWAY)
-    }
-}
-#[derive(Debug)]
-struct Forbidden;
-
-impl Error for Forbidden {}
-
-impl fmt::Display for Forbidden {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", StatusCode::FORBIDDEN)
-    }
-}
 #[derive(Clone)]
 pub struct CasbinAxumMiddleware<S> {
     inner: S,
     enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
-impl<S> Service<Request<Body>> for CasbinAxumMiddleware<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for CasbinAxumMiddleware<S>
 where
-    S: Service<Request<Body>, Response = Response> + Clone + Send + 'static,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible>
+        + Clone
+        + Send
+        + 'static,
     S::Future: Send + 'static,
-    S::Error: Into<Box<dyn Error + Send + Sync>> + 'static,
+    ReqBody: Send + 'static,
+    Infallible: From<<S as Service<Request<ReqBody>>>::Error>,
+    ResBody: HttpBody<Data = Bytes> + Send + 'static,
+    ResBody::Error: Into<BoxError>,
 {
-    type Response = S::Response;
-    type Error = Box<dyn Error + Send + Sync>;
+    type Response = Response<BoxBody>;
+    type Error = Infallible;
     // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(Into::into)
+        self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let cloned_enforcer = self.enforcer.clone();
-        let clone = self.inner.clone();
-        let mut srv = std::mem::replace(&mut self.inner, clone);
+        let not_ready_inner = self.inner.clone();
+        let mut inner = std::mem::replace(&mut self.inner, not_ready_inner);
 
         Box::pin(async move {
             let path = req.uri().path().to_string();
@@ -133,7 +115,10 @@ where
             let vals = match option_vals {
                 Some(value) => value,
                 None => {
-                    return Err(Box::new(Unauthorized) as Box<dyn Error + Send + Sync>);
+                    return Ok(Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .body(body::boxed(Full::from("401 Unauthorized")))
+                        .unwrap());
                 }
             };
 
@@ -145,15 +130,21 @@ where
                     match lock.enforce_mut(vec![subject, domain, path, action]) {
                         Ok(true) => {
                             drop(lock);
-                            return srv.call(req).await.map_err(|err| err.into());
+                            Ok(inner.call(req).await?.map(body::boxed))
                         }
                         Ok(false) => {
                             drop(lock);
-                            return Err(Box::new(Forbidden) as Box<dyn Error + Send + Sync>);
+                            Ok(Response::builder()
+                                .status(StatusCode::FORBIDDEN)
+                                .body(body::boxed(Full::from("403 Forbidden")))
+                                .unwrap())
                         }
                         Err(_) => {
                             drop(lock);
-                            return Err(Box::new(BadGateway) as Box<dyn Error + Send + Sync>);
+                            Ok(Response::builder()
+                                .status(StatusCode::BAD_GATEWAY)
+                                .body(body::boxed(Full::from("502 Bad Gateway")))
+                                .unwrap())
                         }
                     }
                 } else {
@@ -161,20 +152,29 @@ where
                     match lock.enforce_mut(vec![subject, path, action]) {
                         Ok(true) => {
                             drop(lock);
-                            return srv.call(req).await.map_err(|err| err.into());
+                            Ok(inner.call(req).await?.map(body::boxed))
                         }
                         Ok(false) => {
                             drop(lock);
-                            return Err(Box::new(Forbidden) as Box<dyn Error + Send + Sync>);
+                            Ok(Response::builder()
+                                .status(StatusCode::FORBIDDEN)
+                                .body(body::boxed(Full::from("403 Forbidden")))
+                                .unwrap())
                         }
                         Err(_) => {
                             drop(lock);
-                            return Err(Box::new(BadGateway) as Box<dyn Error + Send + Sync>);
+                            Ok(Response::builder()
+                                .status(StatusCode::BAD_GATEWAY)
+                                .body(body::boxed(Full::from("502 Bad Gateway")))
+                                .unwrap())
                         }
                     }
                 }
             } else {
-                return Err(Box::new(Unauthorized) as Box<dyn Error + Send + Sync>);
+                Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(body::boxed(Full::from("401 Unauthorized")))
+                    .unwrap())
             }
         })
     }

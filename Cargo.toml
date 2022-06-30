@@ -15,8 +15,9 @@ async-std = { version = "1.10.0", default-features = false, optional = true }
 axum = "0.5.7"
 futures = "0.3"
 tower = { version = "0.4", features = ["full"] }
-hyper = { version = "0.14.19", features = ["full"] }
 http = "0.2.8"
+http-body = "0.4.5"
+bytes = "1.1.0"
 
 [features]
 default = ["runtime-tokio"]

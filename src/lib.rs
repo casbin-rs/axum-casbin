@@ -1,5 +1,3 @@
-
 pub use casbin;
 pub mod middleware;
-pub use middleware::{CasbinAxumMiddleware, CasbinAxumLayer, CasbinVals};
-
+pub use middleware::{CasbinAxumLayer, CasbinAxumMiddleware, CasbinVals};
