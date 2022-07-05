@@ -28,6 +28,7 @@ runtime-async-std = ["casbin/runtime-async-std", "async-std/std"]
 [dev-dependencies]
 tokio = { version = "1.17.0", features = [ "full" ] }
 async-std = { version = "1.10.0", features = [ "attributes" ] }
+axum-test-helper = "0.1.1"
 
 [profile.release]
 codegen-units = 1
