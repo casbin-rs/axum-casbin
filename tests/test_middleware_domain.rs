@@ -1,29 +1,10 @@
-# axum-casbin-auth
-[Casbin](https://github.com/casbin/casbin-rs) access control middleware for [axum](https://github.com/tokio-rs/axum) framework 
-
-## Install
-
-Add it to `Cargo.toml`
-
-```toml
-axum = "0.5.7"
-axum-casbin-auth = "0.1.0"
-tokio = { version = "1.17.0", features = [ "full" ] }
-```
-
-## Requirement
-
-**Casbin only takes charge of permission control**, so you need to implement an `Authentication Middleware` to identify user.
-
-You should put `axum_casbin_auth::CasbinVals` which contains `subject`(username) and `domain`(optional) into [Extension](https://docs.rs/http/0.2.8/http/struct.Extensions.html).
-
-For example:
-```rust
-use axum::{response::Response, BoxError};
-use futures::future::BoxFuture;
-
+use axum::{response::Response, routing::get, BoxError, Router};
+use axum_casbin_auth::{CasbinAxumLayer, CasbinVals};
+use axum_test_helper::TestClient;
 use bytes::Bytes;
-use http::{self, Request};
+use casbin::{DefaultModel, FileAdapter};
+use futures::future::BoxFuture;
+use http::{self, Request, StatusCode};
 use http_body::Body as HttpBody;
 use std::{
     boxed::Box,
@@ -31,8 +12,6 @@ use std::{
     task::{Context, Poll},
 };
 use tower::{Layer, Service};
-
-use axum_casbin_auth::CasbinVals;
 
 #[derive(Clone)]
 struct FakeAuthLayer;
@@ -78,59 +57,38 @@ where
         Box::pin(async move {
             let vals = CasbinVals {
                 subject: String::from("alice"),
-                domain: None,
+                domain: Option::from(String::from("domain1")),
             };
             req.extensions_mut().insert(vals);
             inner.call(req).await
         })
     }
 }
-```
-
-## Example
-```rust
-use axum::{routing::get, Router};
-use axum_casbin_auth::{CasbinAxumLayer};
-use axum_casbin_auth::casbin::function_map::key_match2;
-use axum_casbin_auth::casbin::{CoreApi, DefaultModel, FileAdapter, Result};
 
 // Handler that immediately returns an empty `200 OK` response.
 async fn handler() {}
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let m = DefaultModel::from_file("examples/rbac_with_pattern_model.conf")
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
+async fn test_middleware_domain() {
+    let m = DefaultModel::from_file("examples/rbac_with_domains_model.conf")
         .await
         .unwrap();
-
-    let a = FileAdapter::new("examples/rbac_with_pattern_policy.csv");
+    let a = FileAdapter::new("examples/rbac_with_domains_policy.csv");
 
     let casbin_middleware = CasbinAxumLayer::new(m, a).await.unwrap();
 
-    casbin_middleware
-        .write()
-        .await
-        .get_role_manager()
-        .write()
-        .matching_fn(Some(key_match2), None);
-
     let app = Router::new()
         .route("/pen/1", get(handler))
-        .route("/pen/2", get(handler))
-        .route("/book/:id", get(handler))
+        .route("/book/1", get(handler))
         .layer(casbin_middleware)
         .layer(FakeAuthLayer);
 
-    axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
-        .serve(app.into_make_service())
-        .await;
-    
-        Ok(())
+    let client = TestClient::new(app);
+
+    let resp_pen = client.get("/pen/1").send().await;
+    assert_eq!(resp_pen.status(), StatusCode::OK);
+
+    let resp_book = client.get("/book/1").send().await;
+    assert_eq!(resp_book.status(), StatusCode::FORBIDDEN);
 }
-```
-
-## License
-
-This project is licensed under
-
-* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
