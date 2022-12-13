@@ -1,5 +1,7 @@
 # axum-casbin-auth
-[Casbin](https://github.com/casbin/casbin-rs) access control middleware for [axum](https://github.com/tokio-rs/axum) framework 
+[![Crates.io](https://img.shields.io/crates/v/axum-casbin.svg)](https://crates.io/crates/axum-casbin)
+[![crates.io](https://img.shields.io/crates/d/axum-casbin)](https://crates.io/crates/axum-casbin)
+[![CI](https://github.com/casbin-rs/axum-casbin-auth/actions/workflows/CI.yml/badge.svg)](https://github.com/casbin-rs/axum-casbin-auth/actions/workflows/CI.yml)
 
 ## Install
 
@@ -7,7 +9,7 @@ Add it to `Cargo.toml`
 
 ```toml
 axum = "0.5.7"
-axum-casbin-auth = "0.1.0"
+axum-casbin = "0.1.0"
 tokio = { version = "1.17.0", features = [ "full" ] }
 ```
 
