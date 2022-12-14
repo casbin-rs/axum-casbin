@@ -1,5 +1,5 @@
 use axum::{response::Response, routing::get, BoxError, Router};
-use axum_casbin_auth::{CasbinAxumLayer, CasbinVals};
+use axum_casbin::{CasbinAxumLayer, CasbinVals};
 use axum_test_helper::TestClient;
 use bytes::Bytes;
 use casbin::function_map::key_match2;

@@ -1,4 +1,4 @@
-# axum-casbin-auth
+# axum-casbin
 [![Crates.io](https://img.shields.io/crates/v/axum-casbin.svg)](https://crates.io/crates/axum-casbin)
 [![crates.io](https://img.shields.io/crates/d/axum-casbin)](https://crates.io/crates/axum-casbin)
 [![CI](https://github.com/casbin-rs/axum-casbin-auth/actions/workflows/CI.yml/badge.svg)](https://github.com/casbin-rs/axum-casbin-auth/actions/workflows/CI.yml)
@@ -17,7 +17,7 @@ tokio = { version = "1.17.0", features = [ "full" ] }
 
 **Casbin only takes charge of permission control**, so you need to implement an `Authentication Middleware` to identify user.
 
-You should put `axum_casbin_auth::CasbinVals` which contains `subject`(username) and `domain`(optional) into [Extension](https://docs.rs/http/0.2.8/http/struct.Extensions.html).
+You should put `axum_casbin::CasbinVals` which contains `subject`(username) and `domain`(optional) into [Extension](https://docs.rs/http/0.2.8/http/struct.Extensions.html).
 
 For example:
 ```rust
@@ -34,7 +34,7 @@ use std::{
 };
 use tower::{Layer, Service};
 
-use axum_casbin_auth::CasbinVals;
+use axum_casbin::CasbinVals;
 
 #[derive(Clone)]
 struct FakeAuthLayer;
@@ -92,9 +92,9 @@ where
 ## Example
 ```rust
 use axum::{routing::get, Router};
-use axum_casbin_auth::{CasbinAxumLayer};
-use axum_casbin_auth::casbin::function_map::key_match2;
-use axum_casbin_auth::casbin::{CoreApi, DefaultModel, FileAdapter, Result};
+use axum_casbin::{CasbinAxumLayer};
+use axum_casbin::casbin::function_map::key_match2;
+use axum_casbin::casbin::{CoreApi, DefaultModel, FileAdapter, Result};
 
 // Handler that immediately returns an empty `200 OK` response.
 async fn handler() {}
