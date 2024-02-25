@@ -7,10 +7,9 @@ use bytes::Bytes;
 use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
 use futures::future::BoxFuture;
-use http::{self, Request, StatusCode};
+use http::{Request, StatusCode};
 use http_body::{Body as HttpBody, Full};
 use std::{
-    boxed::Box,
     convert::Infallible,
     ops::{Deref, DerefMut},
     sync::Arc,
