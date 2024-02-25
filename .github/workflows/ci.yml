@@ -1,0 +1,38 @@
+name: Auto Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Auto Build CI
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        rust: [nightly, beta, stable]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup set profile minimal
+          rustup update --no-self-update ${{ matrix.rust }}
+          rustup component add --toolchain ${{ matrix.rust }} rustfmt clippy
+          rustup default ${{ matrix.rust }}
+
+      - name: Cargo Build
+        run: cargo build
+
+      - name: Cargo Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Cargo Fmt Check
+        run: cargo fmt --all -- --check
