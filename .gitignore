@@ -16,3 +16,8 @@ Cargo.lock
 
 /target
 #Cargo.lock
+
+# Ignore IDE files
+.vscode/
+.idea/
+.DS_Store

@@ -1,7 +1,11 @@
 # axum-casbin
-[![Crates.io](https://img.shields.io/crates/v/axum-casbin.svg)](https://crates.io/crates/axum-casbin)
-[![crates.io](https://img.shields.io/crates/d/axum-casbin)](https://crates.io/crates/axum-casbin)
-[![CI](https://github.com/casbin-rs/axum-casbin-auth/actions/workflows/CI.yml/badge.svg)](https://github.com/casbin-rs/axum-casbin-auth/actions/workflows/CI.yml)
+
+[![Crates.io](https://img.shields.io/crates/d/axum-casbin)](https://crates.io/crates/axum-casbin)
+[![Docs](https://docs.rs/axum-casbin/badge.svg)](https://docs.rs/axum-casbin)
+[![CI](https://github.com/casbin-rs/axum-casbin/actions/workflows/ci.yml/badge.svg)](https://github.com/casbin-rs/axum-casbin/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/casbin-rs/axum-casbin/branch/master/graph/badge.svg)](https://codecov.io/gh/casbin-rs/axum-casbin)
+
+[Casbin](https://github.com/casbin/casbin-rs) access control middleware for [axum](https://github.com/tokio-rs/axum) framework
 
 ## Install
 
