@@ -4,10 +4,9 @@ use axum_test_helper::TestClient;
 use bytes::Bytes;
 use casbin::{DefaultModel, FileAdapter};
 use futures::future::BoxFuture;
-use http::{self, Request, StatusCode};
+use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use std::{
-    boxed::Box,
     convert::Infallible,
     task::{Context, Poll},
 };

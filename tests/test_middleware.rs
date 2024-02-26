@@ -5,10 +5,9 @@ use bytes::Bytes;
 use casbin::function_map::key_match2;
 use casbin::{CoreApi, DefaultModel, FileAdapter};
 use futures::future::BoxFuture;
-use http::{self, Request, StatusCode};
+use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use std::{
-    boxed::Box,
     convert::Infallible,
     task::{Context, Poll},
 };
