@@ -1,6 +1,6 @@
 use axum::{response::Response, routing::get, BoxError, Router};
 use axum_casbin::{CasbinAxumLayer, CasbinVals};
-use axum_test_helper::TestClient;
+use axum_test_helpers::TestClient;
 use bytes::Bytes;
 use casbin::{DefaultModel, FileAdapter};
 use futures::future::BoxFuture;
@@ -85,9 +85,9 @@ async fn test_middleware_domain() {
 
     let client = TestClient::new(app);
 
-    let resp_pen = client.get("/pen/1").send().await;
+    let resp_pen = client.get("/pen/1").await;
     assert_eq!(resp_pen.status(), StatusCode::OK);
 
-    let resp_book = client.get("/book/1").send().await;
+    let resp_book = client.get("/book/1").await;
     assert_eq!(resp_book.status(), StatusCode::FORBIDDEN);
 }

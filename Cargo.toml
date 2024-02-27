@@ -16,11 +16,12 @@ path = "src/lib.rs"
 casbin = { version = "2.0.9", default-features = false, features = ["incremental", "cached"] }
 tokio = { version = "1.17.0", default-features = false, optional = true }
 async-std = { version = "1.10.0", default-features = false, optional = true }
-axum = "0.5.7"
+axum = "0.7.4"
 futures = "0.3"
 tower = { version = "0.4", features = ["full"] }
-http = "0.2.8"
-http-body = "0.4.5"
+http = "1.0.0"
+http-body = "1.0.0"
+http-body-util = "0.1.0"
 bytes = "1.1.0"
 
 [features]
@@ -32,7 +33,7 @@ runtime-async-std = ["casbin/runtime-async-std", "async-std/std"]
 [dev-dependencies]
 tokio = { version = "1.17.0", features = [ "full" ] }
 async-std = { version = "1.10.0", features = [ "attributes" ] }
-axum-test-helper = "0.1.1"
+axum-test-helpers = "0.7.5"
 
 [profile.release]
 codegen-units = 1
