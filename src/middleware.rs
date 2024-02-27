@@ -1,5 +1,5 @@
 use axum::{
-    body::{self, BoxBody},
+    body,
     response::Response,
     BoxError,
 };
@@ -8,7 +8,8 @@ use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
 use futures::future::BoxFuture;
 use http::{Request, StatusCode};
-use http_body::{Body as HttpBody, Full};
+use http_body::{Body as HttpBody};
+use http_body_util::Full;
 use std::{
     convert::Infallible,
     ops::{Deref, DerefMut},
@@ -93,7 +94,7 @@ where
     ResBody: HttpBody<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<BoxError>,
 {
-    type Response = Response<BoxBody>;
+    type Response = Response;
     type Error = Infallible;
     // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
@@ -116,7 +117,7 @@ where
                 None => {
                     return Ok(Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
-                        .body(body::boxed(Full::from("401 Unauthorized")))
+                        .body(body::Body::new(Full::from("401 Unauthorized")))
                         .unwrap());
                 }
             };
@@ -129,20 +130,20 @@ where
                     match lock.enforce_mut(vec![subject, domain, path, action]) {
                         Ok(true) => {
                             drop(lock);
-                            Ok(inner.call(req).await?.map(body::boxed))
+                            Ok(inner.call(req).await?.map(body::Body::new))
                         }
                         Ok(false) => {
                             drop(lock);
                             Ok(Response::builder()
                                 .status(StatusCode::FORBIDDEN)
-                                .body(body::boxed(Full::from("403 Forbidden")))
+                                .body(body::Body::new(Full::from("403 Forbidden")))
                                 .unwrap())
                         }
                         Err(_) => {
                             drop(lock);
                             Ok(Response::builder()
                                 .status(StatusCode::BAD_GATEWAY)
-                                .body(body::boxed(Full::from("502 Bad Gateway")))
+                                .body(body::Body::new(Full::from("502 Bad Gateway")))
                                 .unwrap())
                         }
                     }
@@ -151,20 +152,20 @@ where
                     match lock.enforce_mut(vec![subject, path, action]) {
                         Ok(true) => {
                             drop(lock);
-                            Ok(inner.call(req).await?.map(body::boxed))
+                            Ok(inner.call(req).await?.map(body::Body::new))
                         }
                         Ok(false) => {
                             drop(lock);
                             Ok(Response::builder()
                                 .status(StatusCode::FORBIDDEN)
-                                .body(body::boxed(Full::from("403 Forbidden")))
+                                .body(body::Body::new(Full::from("403 Forbidden")))
                                 .unwrap())
                         }
                         Err(_) => {
                             drop(lock);
                             Ok(Response::builder()
                                 .status(StatusCode::BAD_GATEWAY)
-                                .body(body::boxed(Full::from("502 Bad Gateway")))
+                                .body(body::Body::new(Full::from("502 Bad Gateway")))
                                 .unwrap())
                         }
                     }
@@ -172,7 +173,7 @@ where
             } else {
                 Ok(Response::builder()
                     .status(StatusCode::UNAUTHORIZED)
-                    .body(body::boxed(Full::from("401 Unauthorized")))
+                    .body(body::Body::new(Full::from("401 Unauthorized")))
                     .unwrap())
             }
         })

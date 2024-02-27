@@ -9,12 +9,12 @@
 
 ## Install
 
-Add it to `Cargo.toml`
+Add dependencies to `Cargo.toml`
 
-```toml
-axum = "0.5.7"
-axum-casbin = "1.0.0"
-tokio = { version = "1.17.0", features = [ "full" ] }
+```bash
+cargo add axum
+cargo add axum-casbin
+cargo add tokio --features full
 ```
 
 ## Requirement
