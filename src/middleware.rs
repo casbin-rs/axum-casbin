@@ -1,14 +1,10 @@
-use axum::{
-    body,
-    response::Response,
-    BoxError,
-};
+use axum::{body, response::Response, BoxError};
 use bytes::Bytes;
 use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
 use futures::future::BoxFuture;
 use http::{Request, StatusCode};
-use http_body::{Body as HttpBody};
+use http_body::Body as HttpBody;
 use http_body_util::Full;
 use std::{
     convert::Infallible,
