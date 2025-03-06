@@ -13,16 +13,16 @@ name = "axum_casbin"
 path = "src/lib.rs"
 
 [dependencies]
-casbin = { version = "2.0.9", default-features = false, features = ["incremental", "cached"] }
-tokio = { version = "1.17.0", default-features = false, optional = true }
-async-std = { version = "1.10.0", default-features = false, optional = true }
-axum = "0.7.4"
+casbin = { version = "2.10.1", default-features = false, features = ["incremental", "cached"] }
+tokio = { version = "1.43.0", default-features = false, optional = true }
+async-std = { version = "1.13.0", default-features = false, optional = true }
+axum = "0.8.1"
 futures = "0.3"
-tower = { version = "0.4", features = ["full"] }
-http = "1.0.0"
-http-body = "1.0.0"
-http-body-util = "0.1.0"
-bytes = "1.1.0"
+tower = { version = "0.5", features = ["full"] }
+http = "1.2.0"
+http-body = "1.0.1"
+http-body-util = "0.1.2"
+bytes = "1.8"
 
 [features]
 default = ["runtime-tokio"]
@@ -31,9 +31,9 @@ runtime-tokio = ["casbin/runtime-tokio", "tokio/sync"]
 runtime-async-std = ["casbin/runtime-async-std", "async-std/std"]
 
 [dev-dependencies]
-tokio = { version = "1.17.0", features = [ "full" ] }
-async-std = { version = "1.10.0", features = [ "attributes" ] }
-axum-test-helpers = "0.7.5"
+tokio = { version = "1.43.0", features = [ "full" ] }
+async-std = { version = "1.13.0", features = [ "attributes" ] }
+axum-test = "17.2.0"
 
 [profile.release]
 codegen-units = 1

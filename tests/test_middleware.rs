@@ -1,6 +1,6 @@
 use axum::{response::Response, routing::get, BoxError, Router};
 use axum_casbin::{CasbinAxumLayer, CasbinVals};
-use axum_test_helpers::TestClient;
+use axum_test::TestServer;
 use bytes::Bytes;
 use casbin::function_map::key_match2;
 use casbin::{CoreApi, DefaultModel, FileAdapter};
@@ -89,18 +89,18 @@ async fn test_middleware() {
     let app = Router::new()
         .route("/pen/1", get(handler))
         .route("/pen/2", get(handler))
-        .route("/book/:id", get(handler))
+        .route("/book/{id}", get(handler))
         .layer(casbin_middleware)
         .layer(FakeAuthLayer);
 
-    let client = TestClient::new(app);
+    let client = TestServer::new(app).unwrap();
 
     let resp_pen_1 = client.get("/pen/1").await;
-    assert_eq!(resp_pen_1.status(), StatusCode::OK);
+    assert_eq!(resp_pen_1.status_code(), StatusCode::OK);
 
     let resp_book = client.get("/book/2").await;
-    assert_eq!(resp_book.status(), StatusCode::OK);
+    assert_eq!(resp_book.status_code(), StatusCode::OK);
 
     let resp_pen_2 = client.get("/pen/2").await;
-    assert_eq!(resp_pen_2.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp_pen_2.status_code(), StatusCode::FORBIDDEN);
 }
