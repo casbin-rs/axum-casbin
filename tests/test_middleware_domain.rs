@@ -1,6 +1,6 @@
 use axum::{response::Response, routing::get, BoxError, Router};
 use axum_casbin::{CasbinAxumLayer, CasbinVals};
-use axum_test_helpers::TestClient;
+use axum_test::TestServer;
 use bytes::Bytes;
 use casbin::{DefaultModel, FileAdapter};
 use futures::future::BoxFuture;
@@ -83,11 +83,11 @@ async fn test_middleware_domain() {
         .layer(casbin_middleware)
         .layer(FakeAuthLayer);
 
-    let client = TestClient::new(app);
+    let client = TestServer::new(app).unwrap();
 
     let resp_pen = client.get("/pen/1").await;
-    assert_eq!(resp_pen.status(), StatusCode::OK);
+    assert_eq!(resp_pen.status_code(), StatusCode::OK);
 
     let resp_book = client.get("/book/1").await;
-    assert_eq!(resp_book.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp_book.status_code(), StatusCode::FORBIDDEN);
 }
