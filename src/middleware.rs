@@ -118,52 +118,34 @@ where
                 }
             };
 
-            let subject = vals.subject.clone();
+            let subject = vals.subject;
 
-            if !vals.subject.is_empty() {
-                if let Some(domain) = vals.domain {
-                    let mut lock = cloned_enforcer.write().await;
-                    match lock.enforce_mut(vec![subject, domain, path, action]) {
-                        Ok(true) => {
-                            drop(lock);
-                            Ok(inner.call(req).await?.map(body::Body::new))
-                        }
-                        Ok(false) => {
-                            drop(lock);
-                            Ok(Response::builder()
-                                .status(StatusCode::FORBIDDEN)
-                                .body(body::Body::new(Full::from("403 Forbidden")))
-                                .unwrap())
-                        }
-                        Err(_) => {
-                            drop(lock);
-                            Ok(Response::builder()
-                                .status(StatusCode::BAD_GATEWAY)
-                                .body(body::Body::new(Full::from("502 Bad Gateway")))
-                                .unwrap())
-                        }
-                    }
+            if !subject.is_empty() {
+                let mut lock = cloned_enforcer.write().await;
+                let args = if let Some(domain) = vals.domain {
+                    vec![subject, domain, path, action]
                 } else {
-                    let mut lock = cloned_enforcer.write().await;
-                    match lock.enforce_mut(vec![subject, path, action]) {
-                        Ok(true) => {
-                            drop(lock);
-                            Ok(inner.call(req).await?.map(body::Body::new))
-                        }
-                        Ok(false) => {
-                            drop(lock);
-                            Ok(Response::builder()
-                                .status(StatusCode::FORBIDDEN)
-                                .body(body::Body::new(Full::from("403 Forbidden")))
-                                .unwrap())
-                        }
-                        Err(_) => {
-                            drop(lock);
-                            Ok(Response::builder()
-                                .status(StatusCode::BAD_GATEWAY)
-                                .body(body::Body::new(Full::from("502 Bad Gateway")))
-                                .unwrap())
-                        }
+                    vec![subject, path, action]
+                };
+
+                match lock.enforce_mut(args) {
+                    Ok(true) => {
+                        drop(lock);
+                        Ok(inner.call(req).await?.map(body::Body::new))
+                    }
+                    Ok(false) => {
+                        drop(lock);
+                        Ok(Response::builder()
+                            .status(StatusCode::FORBIDDEN)
+                            .body(body::Body::new(Full::from("403 Forbidden")))
+                            .unwrap())
+                    }
+                    Err(_) => {
+                        drop(lock);
+                        Ok(Response::builder()
+                            .status(StatusCode::BAD_GATEWAY)
+                            .body(body::Body::new(Full::from("502 Bad Gateway")))
+                            .unwrap())
                     }
                 }
             } else {
