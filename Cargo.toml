@@ -17,12 +17,7 @@ casbin = { version = "2.10.1", default-features = false, features = ["incrementa
 tokio = { version = "1.43.0", default-features = false, optional = true }
 async-std = { version = "1.13.0", default-features = false, optional = true }
 axum = "0.8.1"
-futures = "0.3"
-tower = { version = "0.5", features = ["full"] }
-http = "1.2.0"
-http-body = "1.0.1"
-http-body-util = "0.1.2"
-bytes = "1.8"
+tower = { version = "0.5" }
 
 [features]
 default = ["runtime-tokio"]
