@@ -7,104 +7,69 @@
 
 [Casbin](https://github.com/casbin/casbin-rs) access control middleware for [axum](https://github.com/tokio-rs/axum) framework
 
-## Install
-
-Add dependencies to `Cargo.toml`
-
-```bash
-cargo add axum
-cargo add axum-casbin
-cargo add tokio --features full
-```
-
 ## Requirement
 
 **Casbin only takes charge of permission control**, so you need to implement an `Authentication Middleware` to identify user.
 
-You should put `axum_casbin::CasbinVals` which contains `subject`(username) and `domain`(optional) into [Extension](https://docs.rs/http/0.2.8/http/struct.Extensions.html).
+You should put `axum_casbin::CasbinVals` which contains `subject`(username) and `domain`(optional) into [Extension](https://docs.rs/http/latest/http/struct.Extensions.html).
+
+> For more details on implementing middleware, please refer to [axum::middleware](https://docs.rs/axum/latest/axum/middleware/index.html) or [tower::Service](https://docs.rs/tower/latest/tower/trait.Service.html).
 
 For example:
 ```rust
-use axum::{response::Response, BoxError};
-use futures::future::BoxFuture;
-
-use bytes::Bytes;
-use http::{self, Request};
-use http_body::Body as HttpBody;
-use std::{
-    boxed::Box,
-    convert::Infallible,
-    task::{Context, Poll},
-};
+use axum::extract::Request;
+use axum_casbin::CasbinVals;
+use std::task::{Context, Poll};
 use tower::{Layer, Service};
 
-use axum_casbin::CasbinVals;
-
 #[derive(Clone)]
-struct FakeAuthLayer;
+pub struct AuthLayer;
 
-impl<S> Layer<S> for FakeAuthLayer {
-    type Service = FakeAuthMiddleware<S>;
+impl<S> Layer<S> for AuthLayer {
+    type Service = AuthMiddleware<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        FakeAuthMiddleware { inner }
+        AuthMiddleware { inner }
     }
 }
 
 #[derive(Clone)]
-struct FakeAuthMiddleware<S> {
+pub struct AuthMiddleware<S> {
     inner: S,
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for FakeAuthMiddleware<S>
+impl<S> Service<Request> for AuthMiddleware<S>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible>
-        + Clone
-        + Send
-        + 'static,
-    S::Future: Send + 'static,
-    ReqBody: Send + 'static,
-    Infallible: From<<S as Service<Request<ReqBody>>>::Error>,
-    ResBody: HttpBody<Data = Bytes> + Send + 'static,
-    ResBody::Error: Into<BoxError>,
+    S: Service<Request>,
 {
-    type Response = S::Response;
     type Error = S::Error;
-    // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
+    type Future = S::Future;
+    type Response = S::Response;
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
-
-    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let not_ready_inner = self.inner.clone();
-        let mut inner = std::mem::replace(&mut self.inner, not_ready_inner);
-
-        Box::pin(async move {
-            let vals = CasbinVals {
-                subject: String::from("alice"),
-                domain: None,
-            };
-            req.extensions_mut().insert(vals);
-            inner.call(req).await
-        })
+    fn call(&mut self, mut req: Request) -> Self::Future {
+        req.extensions_mut().insert(CasbinVals {
+            subject: String::from("alice"),
+            domain: None,
+        });
+        self.inner.call(req)
     }
 }
 ```
 
 ## Example
 ```rust
-use axum::{routing::get, Router};
-use axum_casbin::{CasbinAxumLayer};
+use axum::routing::{Router, get};
+use axum_casbin::CasbinAxumLayer;
 use axum_casbin::casbin::function_map::key_match2;
-use axum_casbin::casbin::{CoreApi, DefaultModel, FileAdapter, Result};
+use axum_casbin::casbin::{CoreApi, DefaultModel, FileAdapter};
 
 // Handler that immediately returns an empty `200 OK` response.
 async fn handler() {}
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     let m = DefaultModel::from_file("examples/rbac_with_pattern_model.conf")
         .await
         .unwrap();
@@ -120,18 +85,21 @@ async fn main() -> Result<()> {
         .write()
         .matching_fn(Some(key_match2), None);
 
-    let app = Router::new()
+    let app: Router = Router::new()
+        .route("/", get(handler))
         .route("/pen/1", get(handler))
         .route("/pen/2", get(handler))
-        .route("/book/:id", get(handler))
+        .route("/book/{id}", get(handler))
         .layer(casbin_middleware)
-        .layer(FakeAuthLayer);
-
-    axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
-        .serve(app.into_make_service())
-        .await;
-    
-        Ok(())
+        .layer(AuthLayer);
+    axum::serve(
+        tokio::net::TcpListener::bind("127.0.0.1:3000")
+            .await
+            .unwrap(),
+        app.into_make_service(),
+    )
+    .await
+    .unwrap();
 }
 ```
 

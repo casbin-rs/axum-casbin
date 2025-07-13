@@ -1,13 +1,12 @@
-use axum::{body, response::Response, BoxError};
-use bytes::Bytes;
+use axum::extract::Request;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::response::Response;
 use casbin::prelude::{TryIntoAdapter, TryIntoModel};
 use casbin::{CachedEnforcer, CoreApi, Result as CasbinResult};
-use futures::future::BoxFuture;
-use http::{Request, StatusCode};
-use http_body::Body as HttpBody;
-use http_body_util::Full;
+use std::future::Future;
+use std::pin::Pin;
 use std::{
-    convert::Infallible,
     ops::{Deref, DerefMut},
     sync::Arc,
     task::{Context, Poll},
@@ -78,81 +77,60 @@ pub struct CasbinAxumMiddleware<S> {
     enforcer: Arc<RwLock<CachedEnforcer>>,
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for CasbinAxumMiddleware<S>
+impl<S> Service<Request> for CasbinAxumMiddleware<S>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible>
-        + Clone
-        + Send
-        + 'static,
+    S: Service<Request, Response = Response> + Send + 'static,
     S::Future: Send + 'static,
-    ReqBody: Send + 'static,
-    Infallible: From<<S as Service<Request<ReqBody>>>::Error>,
-    ResBody: HttpBody<Data = Bytes> + Send + 'static,
-    ResBody::Error: Into<BoxError>,
 {
     type Response = Response;
-    type Error = Infallible;
-    // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+    type Error = S::Error;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+    fn call(&mut self, req: Request) -> Self::Future {
         let cloned_enforcer = self.enforcer.clone();
-        let not_ready_inner = self.inner.clone();
-        let mut inner = std::mem::replace(&mut self.inner, not_ready_inner);
+        let path = req.uri().path().to_string();
+        let action = req.method().as_str().to_string();
+        let option_vals = req.extensions().get::<CasbinVals>().cloned();
+        let future = self.inner.call(req);
 
         Box::pin(async move {
-            let path = req.uri().path().to_string();
-            let action = req.method().as_str().to_string();
-            let option_vals = req.extensions().get::<CasbinVals>().map(|x| x.to_owned());
+            fn ok<E>(s: StatusCode) -> Result<Response, E> {
+                Ok(s.into_response())
+            }
+
             let vals = match option_vals {
                 Some(value) => value,
                 None => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(body::Body::new(Full::from("401 Unauthorized")))
-                        .unwrap());
+                    return ok(StatusCode::UNAUTHORIZED);
                 }
             };
 
             let subject = vals.subject;
 
-            if !subject.is_empty() {
-                let mut lock = cloned_enforcer.write().await;
-                let args = if let Some(domain) = vals.domain {
-                    vec![subject, domain, path, action]
-                } else {
-                    vec![subject, path, action]
-                };
+            if subject.is_empty() {
+                return ok(StatusCode::UNAUTHORIZED);
+            }
 
-                match lock.enforce_mut(args) {
-                    Ok(true) => {
-                        drop(lock);
-                        Ok(inner.call(req).await?.map(body::Body::new))
-                    }
-                    Ok(false) => {
-                        drop(lock);
-                        Ok(Response::builder()
-                            .status(StatusCode::FORBIDDEN)
-                            .body(body::Body::new(Full::from("403 Forbidden")))
-                            .unwrap())
-                    }
-                    Err(_) => {
-                        drop(lock);
-                        Ok(Response::builder()
-                            .status(StatusCode::BAD_GATEWAY)
-                            .body(body::Body::new(Full::from("502 Bad Gateway")))
-                            .unwrap())
-                    }
-                }
+            let args = if let Some(domain) = vals.domain {
+                vec![subject, domain, path, action]
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
-                    .body(body::Body::new(Full::from("401 Unauthorized")))
-                    .unwrap())
+                vec![subject, path, action]
+            };
+
+            let result = {
+                let mut guard = cloned_enforcer.write().await;
+                guard.enforce_mut(args)
+            };
+
+            match result {
+                Ok(true) => Ok(future.await?),
+                Ok(false) => ok(StatusCode::FORBIDDEN),
+                Err(_) => ok(StatusCode::INTERNAL_SERVER_ERROR),
             }
         })
     }
