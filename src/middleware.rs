@@ -130,7 +130,7 @@ where
             match result {
                 Ok(true) => Ok(future.await?),
                 Ok(false) => ok(StatusCode::FORBIDDEN),
-                Err(_) => ok(StatusCode::BAD_GATEWAY),
+                Err(_) => ok(StatusCode::INTERNAL_SERVER_ERROR),
             }
         })
     }
